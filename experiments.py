@@ -4,23 +4,22 @@ STEM-проєкт, варіант 4. Етап 1: експерименти з м�
 """
 import pickle
 import warnings
-
+ 
 import matplotlib
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
+ 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
-
+ 
 from pizza_model import (PERIODS, STEP, N_STEPS, OPEN_H, CLOSE_H, Pizzeria, run_many, fmt)
-
-plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 7.5, "axes.titlesize": 8,
+ 
+plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 11, "axes.titlesize": 12,
                      "axes.grid": True, "grid.color": "#e3e3e3", "axes.axisbelow": True})
 BLUE, ORANGE, RED, GREEN, GREY = "#1f77b4", "#ff7f0e", "#d62728", "#2ca02c", "#999999"
 HOURS = OPEN_H + np.arange(N_STEPS) * STEP / 60            # час початку кожного кроку, год
-
-
+ 
+ 
 def shade_periods(ax, labels=True):
     """Позначає на графіку межі логічних періодів дня."""
     short = ["ранок", "обід", "день", "вечір", "пізно"]
@@ -29,15 +28,15 @@ def shade_periods(ax, labels=True):
             ax.axvspan(h1, h2, color=ORANGE, alpha=0.10, lw=0)
         if labels:
             ax.text((h1 + h2) / 2, 1.01, short[i], transform=ax.get_xaxis_transform(),
-                    ha="center", va="bottom", fontsize=6.5)
+                    ha="center", va="bottom", fontsize=10)
     ax.set_xlim(OPEN_H, CLOSE_H)
     ax.set_xticks(range(OPEN_H, CLOSE_H + 1, 2))
-
-
+ 
+ 
 # ============================================================ 1. ОДИН ПРОГІН
 single = Pizzeria(seed=42).run()
 orders, steps = single["orders"], single["steps"]
-
+ 
 # --- фрагмент логу замовлень (перші 12 рядків)
 log = orders.head(12).copy()
 log_table = pd.DataFrame({
@@ -53,12 +52,12 @@ log_table = pd.DataFrame({
 k0 = (17 - OPEN_H) * 60 // STEP
 step_log = steps.iloc[k0:k0 + 7][["time", "arrived", "lost", "done", "queue", "busy"]].copy()
 step_log.columns = ["Час (початок кроку)", "Надійшло", "Втрачено", "Виконано", "Черга (кінець кроку)", "Піч працювала, хв"]
-
+ 
 # --- рис. 1: динаміка одного прогону
-fig, ax = plt.subplots(1, 2, figsize=(6.4, 2.6))
+fig, ax = plt.subplots(1, 2, figsize=(9.6, 3.90))
 ax[0].step(HOURS, steps["queue"], where="post", color=BLUE, lw=1.2)
 ax[0].axhline(10, color=RED, ls="--", lw=0.8)
-ax[0].text(OPEN_H + 0.1, 10.25, "ліміт черги = 10", color=RED, fontsize=6.5)
+ax[0].text(OPEN_H + 0.1, 10.25, "ліміт черги = 10", color=RED, fontsize=10)
 shade_periods(ax[0])
 ax[0].set_ylim(0, 11.8)
 ax[0].set_xlabel("Час доби, год"); ax[0].set_ylabel("Довжина черги, замовлень")
@@ -70,19 +69,19 @@ ax[1].step(HOURS, cum_lost, where="post", color=RED, label="втрачено")
 shade_periods(ax[1])
 ax[1].set_xlabel("Час доби, год"); ax[1].set_ylabel("Кумулятивна кількість, шт.")
 ax[1].set_title("б) Замовлення наростаючим підсумком", y=1.1)
-ax[1].legend(loc="upper left", fontsize=6.5, frameon=False)
-plt.tight_layout(); plt.savefig("fig1_single_dynamics.png", dpi=88); plt.close()
-
+ax[1].legend(loc="upper left", fontsize=10, frameon=False)
+plt.tight_layout(); plt.savefig("fig1_single_dynamics.png", dpi=150); plt.show()
+ 
 # --- рис. 2: гістограми одного прогону
-fig, ax = plt.subplots(1, 3, figsize=(6.4, 2.3))
+fig, ax = plt.subplots(1, 3, figsize=(9.6, 3.45))
 ax[0].hist(orders["cook"], bins=10, color=BLUE, edgecolor="white")
 ax[0].set_title("а) Час приготування"); ax[0].set_xlabel("хв"); ax[0].set_ylabel("Кількість замовлень")
 ax[1].hist(orders["price"], bins=10, color=ORANGE, edgecolor="white")
 ax[1].set_title("б) Вартість піци"); ax[1].set_xlabel("грн")
 ax[2].hist(orders["wait"].dropna(), bins=10, color=GREEN, edgecolor="white")
 ax[2].set_title("в) Очікування до початку"); ax[2].set_xlabel("хв")
-plt.tight_layout(); plt.savefig("fig2_single_hist.png", dpi=88); plt.close()
-
+plt.tight_layout(); plt.savefig("fig2_single_hist.png", dpi=150); plt.show()
+ 
 # ================================================================ 2. 100 ПРОГОНІВ
 base = run_many(100, seed0=1)
 S = base["summary"]
@@ -100,7 +99,7 @@ for key, title in names.items():
     v = S[key].astype(float) * scale.get(key, 1)
     rows.append([title, v.mean(), v.std(ddof=1), 1.96 * v.std(ddof=1) / np.sqrt(len(v)), v.min(), v.max()])
 summary_table = pd.DataFrame(rows, columns=["Показник", "Середнє", "Станд. відхилення", "±95% ДІ", "Мін", "Макс"])
-
+ 
 # --- по періодах (середнє за прогонами)
 bp = base["by_period"]
 per_rows = []
@@ -114,22 +113,22 @@ period_table = pd.DataFrame(per_rows, columns=["Період", "Час", "p", "�
                                                "Частка втрачених, %", "Завантаження, %",
                                                "Сер. черга", "Сер. очікування, хв"])
 period_loss_std = [np.nanstd([df.loc[i, "loss_share"] for df in bp], ddof=1) * 100 for i in range(len(PERIODS))]
-
+ 
 # --- рис. 3: розподіл підсумків за 100 прогонами
-fig, ax = plt.subplots(1, 2, figsize=(6.4, 2.4))
+fig, ax = plt.subplots(1, 2, figsize=(9.6, 3.60))
 ax[0].hist(S["profit"], bins=12, color=BLUE, edgecolor="white")
 ax[0].axvline(S["profit"].mean(), color=RED, ls="--", lw=1, label=f"середнє = {S['profit'].mean():.0f}")
 ax[0].set_title("а) Чистий прибуток за день"); ax[0].set_xlabel("грн"); ax[0].set_ylabel("Кількість прогонів")
-ax[0].legend(fontsize=6.5, frameon=False)
+ax[0].legend(fontsize=10, frameon=False)
 ax[1].hist(S["loss_share"] * 100, bins=12, color=ORANGE, edgecolor="white")
 ax[1].axvline(S["loss_share"].mean() * 100, color=RED, ls="--", lw=1,
               label=f"середнє = {S['loss_share'].mean() * 100:.1f}%")
 ax[1].set_title("б) Частка втрачених замовлень"); ax[1].set_xlabel("%")
-ax[1].legend(fontsize=6.5, frameon=False)
-plt.tight_layout(); plt.savefig("fig3_hist_100.png", dpi=88); plt.close()
-
+ax[1].legend(fontsize=10, frameon=False)
+plt.tight_layout(); plt.savefig("fig3_hist_100.png", dpi=150); plt.show()
+ 
 # --- рис. 4: по періодах та протягом дня
-fig, ax = plt.subplots(1, 2, figsize=(6.4, 2.6))
+fig, ax = plt.subplots(1, 2, figsize=(9.6, 3.90))
 x = np.arange(len(PERIODS))
 ax[0].bar(x, period_table["Частка втрачених, %"], yerr=period_loss_std, color=BLUE, capsize=3,
           error_kw=dict(lw=0.8))
@@ -144,9 +143,9 @@ ax[1].axhline(10, color=RED, ls="--", lw=0.8)
 shade_periods(ax[1]); ax[1].set_ylim(0, 11.8)
 ax[1].set_xlabel("Час доби, год"); ax[1].set_ylabel("Довжина черги, шт.")
 ax[1].set_title("б) Довжина черги протягом дня", y=1.1)
-ax[1].legend(loc="lower right", fontsize=6.5, frameon=False)
-plt.tight_layout(); plt.savefig("fig4_period_100.png", dpi=88); plt.close()
-
+ax[1].legend(loc="lower right", fontsize=10, frameon=False)
+plt.tight_layout(); plt.savefig("fig4_period_100.png", dpi=150); plt.show()
+ 
 # ===================================================== 3. ПЕРЕВІРКА АДЕКВАТНОСТІ
 allo = base["orders"]
 theory = dict(
@@ -159,8 +158,8 @@ generator_check = pd.DataFrame([
     ["Середній час приготування, хв", theory["cook"], allo["cook"].mean()],
     ["Середня вартість піци, грн", theory["price"], allo["price"].mean()],
 ], columns=["Величина", "Теоретичне значення", "Модель (100 прогонів)"])
-
-
+ 
+ 
 def sweep(param, values):
     out = []
     for v in values:
@@ -170,15 +169,15 @@ def sweep(param, values):
                         queue=r["mean_queue"].mean(), wait=r["mean_wait"].mean(), profit=r["profit"].mean(),
                         unfinished=r["unfinished"].mean()))
     return pd.DataFrame(out)
-
-
+ 
+ 
 sweeps = {
     "p_scale": sweep("p_scale", [0, 0.25, 0.5, 1.0, 1.5, 2.0]),
     "time_scale": sweep("time_scale", [0.5, 0.75, 1.0, 1.5, 2.0]),
     "queue_max": sweep("queue_max", [0, 3, 5, 10, 20]),
     "p_ind": sweep("p_ind", [0.0, 0.25, 0.5, 1.0]),
 }
-
+ 
 if __name__ == "__main__":
     pd.set_option("display.width", 220, "display.max_columns", 30)
     print(single["summary"]); print(single["by_period"]); print(log_table); print(step_log)
@@ -189,3 +188,4 @@ if __name__ == "__main__":
         pickle.dump(dict(single=single, log_table=log_table, step_log=step_log, summary_table=summary_table,
                          period_table=period_table, generator_check=generator_check, sweeps=sweeps,
                          theory=theory), f)
+ 
