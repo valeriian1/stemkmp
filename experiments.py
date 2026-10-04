@@ -1,6 +1,5 @@
 """
 STEM-проєкт, варіант 4. Етап 1: експерименти з моделлю однієї печі.
-Запуск:  python experiments.py
 """
 import pickle
 import warnings
@@ -33,7 +32,7 @@ def shade_periods(ax, labels=True):
     ax.set_xticks(range(OPEN_H, CLOSE_H + 1, 2))
  
  
-# ============================================================ 1. ОДИН ПРОГІН
+# 1. ОДИН ПРОГІН
 single = Pizzeria(seed=42).run()
 orders, steps = single["orders"], single["steps"]
  
@@ -82,7 +81,7 @@ ax[2].hist(orders["wait"].dropna(), bins=10, color=GREEN, edgecolor="white")
 ax[2].set_title("в) Очікування до початку"); ax[2].set_xlabel("хв")
 plt.tight_layout(); plt.savefig("fig2_single_hist.png", dpi=150); plt.show()
  
-# ================================================================ 2. 100 ПРОГОНІВ
+# 2. 100 ПРОГОНІВ
 base = run_many(100, seed0=1)
 S = base["summary"]
 names = {
@@ -146,7 +145,7 @@ ax[1].set_title("б) Довжина черги протягом дня", y=1.1)
 ax[1].legend(loc="lower right", fontsize=10, frameon=False)
 plt.tight_layout(); plt.savefig("fig4_period_100.png", dpi=150); plt.show()
  
-# ===================================================== 3. ПЕРЕВІРКА АДЕКВАТНОСТІ
+# 3. ПЕРЕВІРКА АДЕКВАТНОСТІ
 allo = base["orders"]
 theory = dict(
     arrived=sum(p * (h2 - h1) * 60 / STEP for _, h1, h2, p in PERIODS),
@@ -180,12 +179,25 @@ sweeps = {
  
 if __name__ == "__main__":
     pd.set_option("display.width", 220, "display.max_columns", 30)
-    print(single["summary"]); print(single["by_period"]); print(log_table); print(step_log)
-    print(summary_table.round(2)); print(period_table.round(2)); print(generator_check.round(3))
-    for k, v in sweeps.items():
-        print(k); print(v.round(2))
+    
+    print("\n" + "="*60)
+    print("СЕРЕДНІ ПОКАЗНИКИ ЗА 100 ПРОГОНІВ")
+    print("="*60)
+    print(summary_table.round(2))
+    
+    print("\n" + "="*60)
+    print("ВТРАТИ ТА ЗАВАНТАЖЕННЯ ПО ПЕРІОДАХ")
+    print("="*60)
+
+    print(period_table[['Період', 'Час', 'Частка втрачених, %', 'Завантаження, %']].round(2))
+    
+    print("\n" + "="*60)
+    print("ПЕРЕВІРКА АДЕКВАТНОСТІ МОДЕЛІ")
+    print("="*60)
+    print(generator_check.round(3))
+    
     with open("results.pkl", "wb") as f:
         pickle.dump(dict(single=single, log_table=log_table, step_log=step_log, summary_table=summary_table,
                          period_table=period_table, generator_check=generator_check, sweeps=sweeps,
                          theory=theory), f)
- 
+        
