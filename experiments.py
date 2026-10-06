@@ -207,25 +207,6 @@ def plot_single_histograms(orders, path="fig2_single_hist.png", show=True):
     _finish_figure(path, show)
 
 
-def plot_batch_histograms(summary, path="fig3_hist_100.png", show=True):
-    """Рис. 3: розподіл підсумків за серією прогонів."""
-    fig, ax = plt.subplots(1, 2, figsize=(9.6, 3.60))
-
-    ax[0].hist(summary["profit"], bins=12, color=BLUE, edgecolor="white")
-    ax[0].axvline(summary["profit"].mean(), color=RED, ls="--", lw=1,
-                  label=f"середнє = {summary['profit'].mean():.0f}")
-    ax[0].set_title("а) Чистий прибуток за день"); ax[0].set_xlabel("грн"); ax[0].set_ylabel("Кількість прогонів")
-    ax[0].legend(fontsize=10, frameon=False)
-
-    ax[1].hist(summary["loss_share"] * 100, bins=12, color=ORANGE, edgecolor="white")
-    ax[1].axvline(summary["loss_share"].mean() * 100, color=RED, ls="--", lw=1,
-                  label=f"середнє = {summary['loss_share'].mean() * 100:.1f}%")
-    ax[1].set_title("б) Частка втрачених замовлень"); ax[1].set_xlabel("%")
-    ax[1].legend(fontsize=10, frameon=False)
-
-    _finish_figure(path, show)
-
-
 def plot_period_results(period_table, period_loss_std, queue_curves,
                         path="fig4_period_100.png", show=True):
     """Рис. 4: втрати за періодами та середня довжина черги протягом дня."""
@@ -293,7 +274,6 @@ def main(show_plots=True):
     summary_table = build_summary_table(summary)
     period_table = build_period_table(base["by_period"])
     period_loss_std = compute_period_loss_std(base["by_period"])
-    plot_batch_histograms(summary, show=show_plots)
     plot_period_results(period_table, period_loss_std, base["queue_curves"], show=show_plots)
 
     # перевірка адекватності та аналіз чутливості
