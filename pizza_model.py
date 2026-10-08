@@ -1,6 +1,9 @@
 """
 STEM-проєкт, варіант 4: оптимізація роботи піцерії.
 Етап 1. Імітаційна модель обслуговування ОДНІЄЮ піччю (один канал).
+Етап 2. Багатоканальна модель: до 10 печей зі спільною чергою, кількість
+увімкнених печей може змінюватися за періодами дня (розклад).
+За замовчуванням (ovens=1) модель працює точно так, як в етапі 1.
 
 Крок модельного часу - 5 хв, тривалість моделювання - 1 робочий день (09:00-22:00).
 """
@@ -36,6 +39,7 @@ PRICE = {                                  # вартість піци, грн: 
     "індивідуальна": (320, 500),
 }
 OVEN_COST = 200.0                          # вартість утримання однієї ввімкненої печі, грн/год
+MAX_OVENS = 10                             # у закладі 10 печей
 QUEUE_MAX = 10                             # максимальна кількість замовлень у черзі
 
 DEFAULTS = dict(p_scale=1.0, time_scale=1.0, p_ind=P_INDIVIDUAL,
@@ -50,6 +54,25 @@ STEP_PERIOD = np.array([
          if h1 <= OPEN_H + k * STEP / 60 < h2)
     for k in range(N_STEPS)
 ])
+
+
+N_PER = len(PERIODS)
+
+
+def make_schedule(ovens):
+    """Кількість увімкнених печей на кожному кроці.
+
+    ovens: число (стала кількість на весь день), розклад за періодами
+    (довжина N_PER) або розклад за кроками (довжина N_STEPS).
+    """
+    arr = np.atleast_1d(np.asarray(ovens, dtype=int))
+    if arr.size == 1:
+        arr = np.full(N_STEPS, arr[0])
+    elif arr.size == N_PER:
+        arr = arr[STEP_PERIOD]
+    if arr.size != N_STEPS or arr.min() < 1 or arr.max() > MAX_OVENS:
+        raise ValueError(f"розклад має містити від 1 до {MAX_OVENS} печей на кожному кроці")
+    return arr
 
 
 def fmt(minutes):
@@ -103,26 +126,47 @@ class OrderGenerator:
         return Order(num, kind, price, cook, now, period)
 
 
-#  ПІЧ + ЧЕРГА
+#  ПЕЧІ + СПІЛЬНА ЧЕРГА
 class OvenStation:
-    """Піч та черга обмеженої довжини: правила прийому й обслуговування замовлень."""
+    """Печі (одна або кілька) зі спільною чергою обмеженої довжини:
+    правила прийому й обслуговування замовлень.
 
-    def __init__(self, queue_max):
+    schedule - кількість увімкнених печей на кожному кроці. Якщо за розкладом
+    печей стає менше, піч, що вже пече, доводить піцу до кінця (і оплачується
+    до завершення), але нових замовлень не бере.
+    """
+
+    def __init__(self, queue_max, schedule=None):
         self.queue_max = queue_max
-        self.queue = collections.deque()   # замовлення, що чекають (без того, що в печі)
-        self.oven = None                   # замовлення, яке зараз у печі
+        self.schedule = make_schedule(1) if schedule is None else schedule
+        self.queue = collections.deque()   # замовлення, що чекають (без тих, що в печах)
+        self.ovens = []                    # замовлення, які зараз у печах
+        self.active = 0                    # печей оплачено на поточному кроці
 
     @property
     def queue_length(self):
         return len(self.queue)
 
+    @property
+    def cooking(self):
+        return len(self.ovens)
+
+    def capacity(self, now):
+        return int(self.schedule[int(now // STEP)])
+
     def _start_cooking(self, order, moment):
         order.t_start = moment
-        self.oven = order
+        self.ovens.append(order)
+
+    def _fill(self, now, moment):
+        """Завантажує вільні печі замовленнями з черги (FIFO)."""
+        while self.queue and len(self.ovens) < self.capacity(now):
+            self._start_cooking(self.queue.popleft(), moment)
 
     def accept(self, order, now):
-        """Приймає замовлення (в піч або в чергу). False - якщо черга заповнена."""
-        if self.oven is None:
+        """Приймає замовлення (у вільну піч або в чергу). False - якщо черга заповнена."""
+        self._fill(now, now)               # спершу ті, хто вже чекає
+        if len(self.ovens) < self.capacity(now):
             self._start_cooking(order, now)
         elif len(self.queue) < self.queue_max:
             self.queue.append(order)
@@ -131,23 +175,24 @@ class OvenStation:
         return True
 
     def work(self, now):
-        """Робота печі протягом одного кроку.
-        Повертає (хвилин роботи, виконано замовлень).
+        """Робота всіх печей протягом одного кроку.
+        Повертає (сумарно хвилин роботи печей, виконано замовлень).
         """
+        self._fill(now, now)
+        self.active = max(self.capacity(now), len(self.ovens))
         time_left, clock, busy, done = STEP, now, 0.0, 0
-        while time_left > 1e-9 and self.oven is not None:
-            order = self.oven
-            used = min(order.remaining, time_left)
-            order.remaining -= used
+        while time_left > 1e-9 and self.ovens:
+            used = min(min(o.remaining for o in self.ovens), time_left)
+            for order in self.ovens:
+                order.remaining -= used
+            busy += used * len(self.ovens)
             time_left -= used
             clock += used
-            busy += used
-            if order.remaining <= 1e-9:              # піца готова
+            for order in [o for o in self.ovens if o.remaining <= 1e-9]:   # піца готова
                 order.t_finish = clock
-                self.oven = None
+                self.ovens.remove(order)
                 done += 1
-                if self.queue:                       # беремо наступне з черги
-                    self._start_cooking(self.queue.popleft(), clock)
+            self._fill(now, clock)                   # звільнені печі беруть наступні
         return busy, done
 
 
@@ -169,31 +214,37 @@ def summarize_run(orders, steps, oven_cost):
     arrived = len(orders)
     lost = int(orders["lost"].sum())
     revenue = float(served["price"].sum())
-    cost = oven_cost * (CLOSE_H - OPEN_H)
+    oven_hours = steps["active"].sum() * STEP / 60     # оплачені години роботи печей
+    cost = oven_cost * oven_hours
     return dict(
         arrived=arrived, lost=lost, accepted=arrived - lost, served=len(served),
         unfinished=arrived - lost - len(served),
         loss_share=lost / arrived if arrived else np.nan,
-        revenue=revenue, cost=cost, profit=revenue - cost,
-        utilization=steps["busy"].sum() / (N_STEPS * STEP),
+        revenue=revenue, oven_hours=oven_hours, cost=cost, profit=revenue - cost,
+        utilization=steps["busy"].sum() / (oven_hours * 60),
         mean_queue=steps["queue"].mean(), max_queue=int(steps["queue"].max()),
         mean_wait=orders["wait"].mean() if orders["wait"].notna().any() else np.nan,
     )
 
 
-def summarize_by_period(orders, steps):
-    """Показники прогону в розрізі логічних періодів дня."""
-    n_per = len(PERIODS)
+def summarize_by_period(orders, steps, oven_cost=OVEN_COST):
+    """Показники прогону в розрізі логічних періодів дня.
+    Виручка відноситься до періоду, в якому замовлення надійшло."""
+    served = orders[orders["t_finish"].notna()]
+    in_period = [steps["period"] == i for i in range(N_PER)]
     table = pd.DataFrame(dict(
         period=[p[0] for p in PERIODS],
-        arrived=[int((orders["period"] == i).sum()) for i in range(n_per)],
-        lost=[int(orders.loc[orders["period"] == i, "lost"].sum()) for i in range(n_per)],
-        utilization=[steps.loc[steps["period"] == i, "busy"].sum()
-                     / ((steps["period"] == i).sum() * STEP) for i in range(n_per)],
-        mean_queue=[steps.loc[steps["period"] == i, "queue"].mean() for i in range(n_per)],
-        mean_wait=[orders.loc[orders["period"] == i, "wait"].mean() for i in range(n_per)],
+        arrived=[int((orders["period"] == i).sum()) for i in range(N_PER)],
+        lost=[int(orders.loc[orders["period"] == i, "lost"].sum()) for i in range(N_PER)],
+        utilization=[steps.loc[m, "busy"].sum() / (steps.loc[m, "active"].sum() * STEP)
+                     for m in in_period],
+        mean_queue=[steps.loc[m, "queue"].mean() for m in in_period],
+        mean_wait=[orders.loc[orders["period"] == i, "wait"].mean() for i in range(N_PER)],
+        revenue=[served.loc[served["period"] == i, "price"].sum() for i in range(N_PER)],
+        cost=[steps.loc[m, "active"].sum() * STEP / 60 * oven_cost for m in in_period],
     ))
     table["loss_share"] = table["lost"] / table["arrived"].replace(0, np.nan)
+    table["profit"] = table["revenue"] - table["cost"]
     return table
 
 
@@ -204,6 +255,7 @@ def check_consistency(summary, orders, steps, queue_max):
         (summary["accepted"] == summary["served"] + summary["unfinished"]
          and summary["unfinished"] >= 0, "accepted != served + unfinished"),
         (steps["queue"].max() <= queue_max, "черга перевищила ліміт"),
+        ((steps["cooking"] <= steps["active"]).all(), "зайнятих печей більше, ніж увімкнених"),
         ((orders["wait"].dropna() >= -1e-9).all(), "від'ємний час очікування"),
         (0 <= summary["utilization"] <= 1 + 1e-9, "завантаження поза [0, 1]"),
     ]
@@ -219,15 +271,16 @@ def check_consistency(summary, orders, steps, queue_max):
 class Pizzeria:
     """Виконує один прогін: відлік часу, виклик генератора та печі, запис статистики кроків.
 
-    Залежності (генератор, піч) можна підставити ззовні - наприклад, для тестів
-    або для моделі з кількома печами.
+    ovens - кількість печей: стала (число) або розклад за періодами / кроками.
+    Залежності (генератор, печі) можна підставити ззовні - наприклад, для тестів.
     """
 
-    def __init__(self, seed=None, generator=None, station=None, **params):
+    def __init__(self, seed=None, generator=None, station=None, ovens=1, **params):
         self.par = {**DEFAULTS, **params}
         self.rng = np.random.default_rng(seed)
+        self.schedule = make_schedule(ovens)
         self.generator = generator or OrderGenerator(self.rng, self.par)
-        self.station = station or OvenStation(self.par["queue_max"])
+        self.station = station or OvenStation(self.par["queue_max"], self.schedule)
         self.orders = []                   # усі замовлення, що надійшли
         self.steps = []                    # статистика по кроках
 
@@ -248,7 +301,9 @@ class Pizzeria:
             arrived, lost = self.arrival(k, now)
             busy, done = self.station.work(now)
             self.steps.append(dict(k=k, time=fmt(now), period=STEP_PERIOD[k],
+                                   ovens=int(self.schedule[k]), active=self.station.active,
                                    arrived=arrived, lost=lost, done=done,
+                                   cooking=self.station.cooking,
                                    queue=self.station.queue_length, busy=busy))
         return self.results()
 
@@ -257,21 +312,23 @@ class Pizzeria:
         orders = build_orders_frame(self.orders)
         steps = pd.DataFrame(self.steps)
         summary = summarize_run(orders, steps, self.par["oven_cost"])
-        by_period = summarize_by_period(orders, steps)
+        by_period = summarize_by_period(orders, steps, self.par["oven_cost"])
         check_consistency(summary, orders, steps, self.par["queue_max"])
         return dict(summary=summary, by_period=by_period, orders=orders, steps=steps)
 
 
 def run_many(n_runs=100, seed0=1, **params):
     """Серія незалежних прогонів: повертає таблицю підсумків та допоміжні масиви."""
-    summaries, by_period, queue_curves, waits, orders_all = [], [], [], [], []
+    summaries, by_period, queue_curves, cooking_curves, waits, orders_all = [], [], [], [], [], []
     for r in range(n_runs):
         res = Pizzeria(seed=seed0 + r, **params).run()
         summaries.append(res["summary"])
         by_period.append(res["by_period"])
         queue_curves.append(res["steps"]["queue"].to_numpy())
+        cooking_curves.append(res["steps"]["cooking"].to_numpy())
         waits.append(res["orders"]["wait"].dropna().to_numpy())
         orders_all.append(res["orders"])
     return dict(summary=pd.DataFrame(summaries), by_period=by_period,
-                queue_curves=np.array(queue_curves), waits=np.concatenate(waits),
+                queue_curves=np.array(queue_curves), cooking_curves=np.array(cooking_curves),
+                waits=np.concatenate(waits),
                 orders=pd.concat(orders_all, ignore_index=True))
