@@ -5,6 +5,7 @@ STEM-проєкт, варіант 4. Етап 2: рисунки для звіт�
 без повторного моделювання.
 """
 import pickle
+import sched
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -100,8 +101,8 @@ def plot_schedule(r, name="s2_fig1_schedule.png", show=True):
     period_of_step = make_schedule(np.arange(1, len(PERIODS) + 1)) - 1
     for i, (_, h1, h2, p) in enumerate(PERIODS):
         top = max(sched[i], busy[period_of_step == i].max())
-        label(ax, (h1 + h2) / 2, top + 0.12, f"{sched[i]} {ovens_word(sched[i])}\n"
-              f"завант. {table['Завантаження, %'][i]:.0f} %", fontweight="bold")
+        ax.text((h1 + h2) / 2, top + 0.12, f"завантаження {table['Завантаження, %'][i]:.0f} %",
+                color=INK, fontsize=8, ha="center", va="bottom", fontweight="bold")
     time_axis(ax)
     ax.set_ylim(0, max(sched) + 1.5)
     ax.set_yticks(range(0, max(sched) + 2))
@@ -155,13 +156,12 @@ def plot_queue(r, name="s2_fig3_queue.png", show=True):
                     color=ORANGE, alpha=0.2, lw=0, label="у цих межах 80 % прогонів")
     ax.plot(HOURS, mean, color=ORANGE, lw=2, label="середня довжина черги")
     ax.axhline(QUEUE_MAX, color=RED, ls="--", lw=1.2)
-    label(ax, OPEN_H + 0.1, QUEUE_MAX + 0.15, "ліміт черги: далі замовлення втрачаються",
+    label(ax, OPEN_H + 0.1, QUEUE_MAX + 0.15, "ліміт черги",
           color=RED, ha="left")
     k = int(mean.argmax())
     ax.annotate(f"максимум {mean[k]:.1f} о {int(HOURS[k])}:{round(HOURS[k] % 1 * 60):02d}",
-                (HOURS[k], mean[k]), xytext=(HOURS[k] + 0.6, mean[k] + 1.4),
-                fontsize=9.5, fontweight="bold",
-                arrowprops=dict(arrowstyle="-", color=INK2, lw=0.8))
+                (HOURS[k], mean[k]), xytext=(HOURS[k], mean[k] + 0.1),
+                fontsize=8, fontweight="bold")
     time_axis(ax, [f"черга {table['Сер. черга'][i]:.1f}\nвтрати "
                    f"{table['Частка втрачених, %'][i]:.0f} %" for i in range(len(PERIODS))])
     ax.set_ylim(0, QUEUE_MAX + 1.8)
